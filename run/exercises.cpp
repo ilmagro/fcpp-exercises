@@ -186,7 +186,7 @@ MAIN() {
 }
 //! @brief Export types used by the main function (update it when expanding the program).
 FUN_EXPORT main_t = export_list < double, int, monitor_t,
-                                  tuple<int, vec<2>> // added for (4)
+                                  tuple<int, vec<2>> // added for (4), (5)
                                   >;
 
 } // namespace coordination
