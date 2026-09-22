@@ -133,50 +133,101 @@ FUN_EXPORT monitor_t = export_list<past_ctl_t, slcs_t>;
 // @brief Mutex for logging in `MAIN`.
 static std::mutex cout_mutex;
 
+// (1)
+FUN size_t count_neighbours(ARGS) { CODE
+    return sum_hood(CALL, nbr(CALL, 1)) - 1;
+}
+
+// (2)
+FUN size_t count_max_neighbours_ever(ARGS) { CODE
+    size_t neighbours = count_neighbours(CALL);
+
+    return max(neighbours, old(CALL, neighbours));
+}
+
+// (3)
+FUN size_t count_max_neighbours_ever_any(ARGS) { CODE
+    size_t max_neighbours = count_max_neighbours_ever(CALL);
+
+    return nbr(CALL, max_neighbours, [&](field<size_t> v) {
+        return max_hood(CALL, v);
+    });
+}
+
+// (4)
+FUN vec<2> velocity_vector_fewest_neighbours(ARGS) { CODE
+    size_t neighbours = count_neighbours(CALL);
+    tuple<size_t, vec<2>> target = fold_hood(
+        CALL,
+        [](auto t1, auto t2) {
+            return get<0>(t1) < get<0>(t2) ? t1 : t2;
+        },
+        nbr(CALL, make_tuple(neighbours, node.position()))
+    );
+
+    return get<1>(target) - node.position();
+}
+
+// (5)
+FUN vec<2> velocity_vector_most_neighbours(ARGS) { CODE
+    size_t neighbours = count_neighbours(CALL);
+    tuple<size_t, vec<2>> target = fold_hood(
+        CALL,
+        [](auto t1, auto t2) {
+            return get<0>(t1) > get<0>(t2) ? t1 : t2;
+        },
+        nbr(CALL, make_tuple(neighbours, node.position()))
+    );
+
+    return node.position() - get<1>(target);
+}
+
+// (6)
+// Note: alpha is a minimum distance to prevent singularity
+FUN vec<2> velocity_attraction_repulsion(ARGS, double alpha) { CODE
+    vec<2> velocity = make_vec(0, 0);
+    vec<2> v_attract = velocity_vector_fewest_neighbours(CALL);
+    vec<2> v_repel = velocity_vector_most_neighbours(CALL);
+    double r = max(norm(v_attract), alpha);
+
+    if (r > 0) { // prevent division by 0 
+        velocity += v_attract / (r * r * r);
+    }
+
+    r = max(norm(v_repel), alpha);
+
+    if (r > 0) { // prevent division by 0
+        velocity += v_repel / (r * r * r);
+    }
+
+    return velocity;
+}
+
 // @brief Main function.
 MAIN() {
     // import tag names in the local scope.
     using namespace tags;
 
-    // (1)
-    int neighbours = sum_hood(CALL, nbr(CALL, 1)) - 1;
+    size_t neighbours = count_neighbours(CALL);
+    size_t max_neighbours = count_max_neighbours_ever(CALL);
+    size_t max_neighbours_any = count_max_neighbours_ever_any(CALL);
 
-    // (2)
-    int max_neighbours = max(neighbours, old(CALL, neighbours));
-
-    // (3)
-    // Note: no explicit old (FC rep) because this corresponds to FC share
-    int max_neighbours_any = nbr(CALL, max_neighbours, [&](field<int> v) {
-        return max_hood(CALL, v);
-    });
-
-    // (4)
-    tuple<int, vec<2>> target = fold_hood(CALL,
-                                          [](auto t1, auto t2) {
-                                              return get<0>(t1) < get<0>(t2) ? t1 : t2;
-                                          },
-                                          nbr(CALL, make_tuple(neighbours, node.position())));
-
-    node.velocity() = get<1>(target) - node.position();
-
-    // (5)
-    tuple<int, vec<2>> anti_target = fold_hood(CALL,
-                                               [](auto t1, auto t2) {
-                                                   return get<0>(t1) > get<0>(t2) ? t1 : t2;
-                                               },
-                                               nbr(CALL, make_tuple(neighbours, node.position())));
-
-    node.velocity() += node.position() - get<1>(anti_target);
+    // physics simulation
+    // vec<2> attraction = velocity_vector_fewest_neighbours(CALL);
+    // vec<2> repulsion = velocity_vector_most_neighbours(CALL);
+    // node.velocity() = attraction;
+    // node.velocity() += repulsion;
+    node.velocity() = velocity_attraction_repulsion(CALL, 0.1);
 
     // logging
     {
-    std::lock_guard<std::mutex> lock(cout_mutex);
+        std::lock_guard<std::mutex> lock(cout_mutex);
 
-    std::cerr << "Device " << node.uid
-              << " | neighbours: " << neighbours
-              << " | max neghbours: " << max_neighbours
-              << " | max any: " << max_neighbours_any
-              << std::endl;
+        std::cerr << "Device " << node.uid
+                  << " | neighbours: " << neighbours
+                  << " | max neghbours: " << max_neighbours
+                  << " | max any: " << max_neighbours_any
+                  << std::endl;
     }
 
     // usage of node storage
@@ -186,7 +237,8 @@ MAIN() {
 }
 //! @brief Export types used by the main function (update it when expanding the program).
 FUN_EXPORT main_t = export_list < double, int, monitor_t,
-                                  tuple<int, vec<2>> // added for (4), (5)
+                                  size_t, // added for (1), (2), (3)
+                                  tuple<size_t, vec<2>> // added for (4), (5)
                                   >;
 
 } // namespace coordination
