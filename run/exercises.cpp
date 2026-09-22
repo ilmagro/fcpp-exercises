@@ -68,7 +68,7 @@ constexpr size_t communication_range = 100;
  *
  * COMBINING SPATIAL COMPUTING BLOCKS:
  *
- * 8)   Select a node called "source", chosen by finding the node with minimum uid 
+ * 8)   Select a node called "source", chosen by finding the node with minimum uid
  *      in the network, assuming that the diameter of the network is no more than 10 hops.
  *
  * 9)   Compute the distances between any node and the "source" using the adaptive bellman-ford algorithm.
@@ -80,20 +80,20 @@ constexpr size_t communication_range = 100;
  *
  *
  * RUNTIME MONITORING:
- * 
+ *
  * Given that:
  * - the node(s) identified as "source" in exercise (8) are Internet Gateways (gateway),
  * - a node is at risk of disconnection (disrisk) iff it has less than three neighbours,
  * monitor the following properties:
- * 
+ *
  * 12)  You (the current device) have never been at disrisk.
- * 
+ *
  * 13)  In the network, there exists a node that has never been at disrisk.
- * 
+ *
  * 14)  You (the current device) can always reach a gateway through nodes that are not at disrisk.
- * 
+ *
  * 15)  You (the current device) can always reach a gateway through nodes that have never been at disrisk.
- * 
+ *
  * In order to check whether what you computed is correct, you may display the computed
  * quantities as node qualities through tags `node_color`, `node_size` and `node_shape`.
  * You can also save your computed quantities in additional specific node attributes:
@@ -115,12 +115,12 @@ constexpr size_t communication_range = 100;
  *      More precisely, if `v` is the vector between two objects, the resulting force is `v / |v|^3` where
  *      `|v| = sqrt(v_x^2 + v_y^2)`. In FCPP, `norm(v)` is available for computing `|v|`.
  *
- * -    FCPP provides some built-in APIs, like "diameter_election" and "abf_distance". 
+ * -    FCPP provides some built-in APIs, like "diameter_election" and "abf_distance".
  *      Refer to the documentation: https://fcpp-doc.surge.sh
  */
 
 /*
- * @brief example function for checking a property. 
+ * @brief example function for checking a property.
  * Sample property: you (the current device) have not been at disrisk for a couple of rounds.
  */
 FUN bool recent_dis_monitor(ARGS, bool disrisk) { CODE
@@ -130,24 +130,45 @@ FUN bool recent_dis_monitor(ARGS, bool disrisk) { CODE
 }
 FUN_EXPORT monitor_t = export_list<past_ctl_t, slcs_t>;
 
+// @brief Mutex for logging in `MAIN`.
+static std::mutex cout_mutex;
+
 // @brief Main function.
 MAIN() {
     // import tag names in the local scope.
     using namespace tags;
 
-    // sample code below (substitute with the solution to the exercises)...
+    // (1)
+    int neighbours = sum_hood(CALL, nbr(CALL, 1)) - 1;
 
-    // usage of aggregate constructs
-    field<double> f = nbr(CALL, 4.2); // nbr with single value
-    int x = old(CALL, 0, [&](int a){  // old with initial value and update function
-        return a+1;
-    });
-    int y = nbr(CALL, 0, [&](field<int> a){ // nbr with initial value and update function
-        return min_hood(CALL, a);
+    // (2)
+    int max_neighbours = max(neighbours, old(CALL, neighbours));
+
+    // (3)
+    // Note: no explicit old (FC rep) because this corresponds to FC share
+    int max_neighbours_any = nbr(CALL, max_neighbours, [&](field<int> v) {
+        return max_hood(CALL, v);
     });
 
-    // usage of node physics
-    node.velocity() = -node.position()/communication_range;
+    // (4)
+    tuple<int, vec<2>> target = fold_hood(CALL,
+                                          [](auto t1, auto t2) {
+                                              return get<0>(t1) < get<0>(t2) ? t1 : t2;
+                                          },
+                                          nbr(CALL, make_tuple(neighbours, node.position())));
+
+    node.velocity() = get<1>(target) - node.position();
+
+    // logging
+    {
+    std::lock_guard<std::mutex> lock(cout_mutex);
+
+    std::cerr << "Device " << node.uid
+              << " | neighbours: " << neighbours
+              << " | max neghbours: " << max_neighbours
+              << " | max any: " << max_neighbours_any
+              << std::endl;
+    }
 
     // usage of node storage
     node.storage(node_size{}) = 10;
@@ -155,7 +176,9 @@ MAIN() {
     node.storage(node_shape{}) = shape::sphere;
 }
 //! @brief Export types used by the main function (update it when expanding the program).
-FUN_EXPORT main_t = export_list<double, int, monitor_t>;
+FUN_EXPORT main_t = export_list < double, int, monitor_t,
+                                  tuple<int, vec<2>> // added for (4)
+                                  >;
 
 } // namespace coordination
 
