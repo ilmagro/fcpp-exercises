@@ -159,6 +159,15 @@ MAIN() {
 
     node.velocity() = get<1>(target) - node.position();
 
+    // (5)
+    tuple<int, vec<2>> anti_target = fold_hood(CALL,
+                                               [](auto t1, auto t2) {
+                                                   return get<0>(t1) > get<0>(t2) ? t1 : t2;
+                                               },
+                                               nbr(CALL, make_tuple(neighbours, node.position())));
+
+    node.velocity() += node.position() - get<1>(anti_target);
+
     // logging
     {
     std::lock_guard<std::mutex> lock(cout_mutex);
