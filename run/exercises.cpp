@@ -183,24 +183,82 @@ FUN vec<2> velocity_vector_most_neighbours(ARGS) { CODE
 }
 
 // (6)
-// Note: alpha is a minimum distance to prevent singularity
-FUN vec<2> velocity_attraction_repulsion(ARGS, double alpha) { CODE
+// Note: min_dist is a minimum distance to prevent singularity
+FUN vec<2> velocity_attraction_repulsion(ARGS, double min_dist) { CODE
     vec<2> velocity = make_vec(0, 0);
     vec<2> v_attract = velocity_vector_fewest_neighbours(CALL);
     vec<2> v_repel = velocity_vector_most_neighbours(CALL);
-    double r = max(norm(v_attract), alpha);
+    double r = max(norm(v_attract), min_dist);
 
-    if (r > 0) { // prevent division by 0 
+    if (r > 0) { // prevent division by 0
         velocity += v_attract / (r * r * r);
     }
 
-    r = max(norm(v_repel), alpha);
+    r = max(norm(v_repel), min_dist);
 
     if (r > 0) { // prevent division by 0
         velocity += v_repel / (r * r * r);
     }
 
     return velocity;
+}
+
+// (7)
+// Note: alpha is a factor to scale resultant force;
+//       min_dist is a minimum distance to prevent singularity
+FUN vec<2> velocity_repulsion_neighbour_and_wall(ARGS, double min_dist, double alpha) { CODE
+
+    vec<2> velocity = fold_hood(
+        CALL,
+        [&](vec<2> p, vec<2> acc) {
+            vec<2> v = node.position() - p;
+            double r = max(norm(v), min_dist);
+
+            if (r > 0) {
+                return acc + v / (r * r * r);
+            }
+
+            return acc;
+        },
+        nbr(CALL, node.position()),
+        make_vec(0, 0));
+
+    double x = node.position()[0];
+    double y = node.position()[1];
+
+    // left wall: x = 0
+    vec<2> v = make_vec(x, 0);
+    double r = max(norm(v), min_dist);
+
+    if (r > 0) {
+        velocity += v / (r * r * r);
+    }
+
+    // right wall: x = 500
+    v = make_vec(x - 500, 0);
+    r = max(norm(v), min_dist);
+
+    if (r > 0) {
+        velocity += v / (r * r * r);
+    }
+
+    // bottom wall: y = 0
+    v = make_vec(0, y);
+    r = max(norm(v), min_dist);
+
+    if (r > 0) {
+        velocity += v / (r * r * r);
+    }
+
+    // top wall: y = 500
+    v = make_vec(0, y - 500);
+    r = max(norm(v), min_dist);
+
+    if (r > 0) {
+        velocity += v / (r * r * r);
+    }
+
+    return alpha * velocity;
 }
 
 // @brief Main function.
@@ -213,11 +271,7 @@ MAIN() {
     size_t max_neighbours_any = count_max_neighbours_ever_any(CALL);
 
     // physics simulation
-    // vec<2> attraction = velocity_vector_fewest_neighbours(CALL);
-    // vec<2> repulsion = velocity_vector_most_neighbours(CALL);
-    // node.velocity() = attraction;
-    // node.velocity() += repulsion;
-    node.velocity() = velocity_attraction_repulsion(CALL, 0.1);
+    node.velocity() = velocity_repulsion_neighbour_and_wall(CALL, 0, 100);
 
     // logging
     {
@@ -235,10 +289,12 @@ MAIN() {
     node.storage(node_color{}) = color(GREEN);
     node.storage(node_shape{}) = shape::sphere;
 }
+
 //! @brief Export types used by the main function (update it when expanding the program).
 FUN_EXPORT main_t = export_list < double, int, monitor_t,
                                   size_t, // added for (1), (2), (3)
-                                  tuple<size_t, vec<2>> // added for (4), (5)
+                                  tuple<size_t, vec<2>>, // added for (4), (5), (6)
+                                  vec<2> // adder for (7)
                                   >;
 
 } // namespace coordination
