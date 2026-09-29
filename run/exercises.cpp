@@ -261,6 +261,41 @@ FUN vec<2> velocity_repulsion_neighbour_and_wall(ARGS, double min_dist, double a
     return alpha * velocity;
 }
 
+// (8)
+FUN uid_t calculate_source(ARGS, hops_t diameter_upper_bound) { CODE
+    return diameter_election(CALL, node.uid, diameter_upper_bound);
+}
+
+// (9)
+FUN hops_t distance_from_source(ARGS, uid_t source) { CODE
+    bool is_source = node.uid == source;
+
+    return static_cast<hops_t>(abf_distance(CALL, is_source, [] { return field<real_t>(1); }));
+}
+
+// (10)
+FUN hops_t diameter_estimate(ARGS, uid_t source) { CODE
+    hops_t dist = distance_from_source(CALL, source);
+    hops_t estimated_diameter = nbr(CALL, dist,
+        [&](field<hops_t> h) {
+            return max_hood(CALL, mux(h > dist, h, dist), dist);
+        }
+    );
+
+    if (node.uid == source)
+        return estimated_diameter;
+
+    return -1;
+}
+
+// (11)
+FUN hops_t broadcast_diameter(ARGS, uid_t source) { CODE
+    hops_t dist = distance_from_source(CALL, source);
+    hops_t diameter = diameter_estimate(CALL, source);
+
+    return broadcast(CALL, dist, diameter);
+}
+
 // @brief Main function.
 MAIN() {
     // import tag names in the local scope.
@@ -269,9 +304,10 @@ MAIN() {
     size_t neighbours = count_neighbours(CALL);
     size_t max_neighbours = count_max_neighbours_ever(CALL);
     size_t max_neighbours_any = count_max_neighbours_ever_any(CALL);
+    hops_t hops = broadcast_diameter(CALL, calculate_source(CALL, 10));
 
     // physics simulation
-    node.velocity() = velocity_repulsion_neighbour_and_wall(CALL, 0, 100);
+    node.velocity() = velocity_repulsion_neighbour_and_wall(CALL, 0, 1000);
 
     // logging
     {
@@ -281,6 +317,7 @@ MAIN() {
                   << " | neighbours: " << neighbours
                   << " | max neghbours: " << max_neighbours
                   << " | max any: " << max_neighbours_any
+                  << " | hops: " << hops
                   << std::endl;
     }
 
@@ -294,7 +331,8 @@ MAIN() {
 FUN_EXPORT main_t = export_list < double, int, monitor_t,
                                   size_t, // added for (1), (2), (3)
                                   tuple<size_t, vec<2>>, // added for (4), (5), (6)
-                                  vec<2> // adder for (7)
+                                  vec<2>, // adder for (7)
+                                  tuple<uid_t, hops_t> // adder for (8), (9), (10), (11)
                                   >;
 
 } // namespace coordination
