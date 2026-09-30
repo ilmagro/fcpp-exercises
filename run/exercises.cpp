@@ -154,6 +154,8 @@ FUN size_t count_max_neighbours_ever_any(ARGS) { CODE
     });
 }
 
+FUN_EXPORT count_t = export_list<size_t>;
+
 // (4)
 FUN vec<2> velocity_vector_fewest_neighbours(ARGS) { CODE
     size_t neighbours = count_neighbours(CALL);
@@ -261,6 +263,8 @@ FUN vec<2> velocity_repulsion_neighbour_and_wall(ARGS, double min_dist, double a
     return alpha * velocity;
 }
 
+FUN_EXPORT velocity_t = export_list<tuple<size_t, vec<2>>, vec<2>>;
+
 // (8)
 FUN uid_t calculate_source(ARGS, hops_t diameter_upper_bound) { CODE
     return diameter_election(CALL, node.uid, diameter_upper_bound);
@@ -270,11 +274,12 @@ FUN uid_t calculate_source(ARGS, hops_t diameter_upper_bound) { CODE
 FUN hops_t distance_from_source(ARGS, uid_t source) { CODE
     bool is_source = node.uid == source;
 
-    return static_cast<hops_t>(abf_distance(CALL, is_source, [] { return field<real_t>(1); }));
+    /* equivalent to abf_hops */
+    return static_cast<hops_t>(abf_distance(CALL, is_source, [] { return 1; }));
 }
 
 // (10)
-FUN hops_t diameter_estimate(ARGS, uid_t source) { CODE
+FUN hops_t estimate_diameter(ARGS, uid_t source) { CODE
     hops_t dist = distance_from_source(CALL, source);
     hops_t estimated_diameter = nbr(CALL, dist,
         [&](field<hops_t> h) {
@@ -291,10 +296,12 @@ FUN hops_t diameter_estimate(ARGS, uid_t source) { CODE
 // (11)
 FUN hops_t broadcast_diameter(ARGS, uid_t source) { CODE
     hops_t dist = distance_from_source(CALL, source);
-    hops_t diameter = diameter_estimate(CALL, source);
+    hops_t diameter = estimate_diameter(CALL, source);
 
     return broadcast(CALL, dist, diameter);
 }
+
+FUN_EXPORT distance_t = export_list<tuple<uid_t, hops_t>>;
 
 // @brief Main function.
 MAIN() {
@@ -329,10 +336,9 @@ MAIN() {
 
 //! @brief Export types used by the main function (update it when expanding the program).
 FUN_EXPORT main_t = export_list < double, int, monitor_t,
-                                  size_t, // added for (1), (2), (3)
-                                  tuple<size_t, vec<2>>, // added for (4), (5), (6)
-                                  vec<2>, // adder for (7)
-                                  tuple<uid_t, hops_t> // adder for (8), (9), (10), (11)
+                                  count_t, // added for (1), (2), (3)
+                                  velocity_t, // added for (4), (5), (6), (7)
+                                  distance_t // adder for (8), (9), (10), (11)
                                   >;
 
 } // namespace coordination
