@@ -303,6 +303,39 @@ FUN hops_t broadcast_diameter(ARGS, uid_t source) { CODE
 
 FUN_EXPORT distance_t = export_list<tuple<uid_t, hops_t>>;
 
+// (12)
+FUN bool same_never_disrisk(ARGS, bool disrisk) { CODE
+    using namespace logic;
+
+    return H(CALL, !disrisk);
+}
+
+// (13)
+FUN bool any_never_disrisk(ARGS, bool disrisk) { CODE
+    using namespace logic;
+
+    return EH(CALL, !disrisk);
+}
+
+// (14)
+FUN bool can_reach_source_not_disrisk(ARGS, uid_t source, bool disrisk) { CODE
+    bool is_source = node.uid == source;
+
+    return nbr(CALL, is_source && !disrisk, [&](field<bool> reachable) {
+        return !disrisk && (is_source || any_hood(CALL, reachable));
+    });
+}
+
+// (15)
+FUN bool can_reach_source_never_disrisk(ARGS, uid_t source, bool disrisk) { CODE
+    bool is_source = node.uid == source;
+    bool never_disrisk = same_never_disrisk(CALL, disrisk);
+
+    return nbr(CALL, is_source && never_disrisk, [&](field<bool> reachable) {
+        return never_disrisk && (is_source || any_hood(CALL, reachable));
+    });
+}
+
 // @brief Main function.
 MAIN() {
     // import tag names in the local scope.
@@ -311,7 +344,11 @@ MAIN() {
     size_t neighbours = count_neighbours(CALL);
     size_t max_neighbours = count_max_neighbours_ever(CALL);
     size_t max_neighbours_any = count_max_neighbours_ever_any(CALL);
-    hops_t hops = broadcast_diameter(CALL, calculate_source(CALL, 10));
+    uid_t source = calculate_source(CALL, 10);
+    hops_t hops = broadcast_diameter(CALL, source);
+    bool disrisk = neighbours < 3;
+    bool reach_not_disrisk = can_reach_source_not_disrisk(CALL, source, disrisk);
+    bool reach_never_disrisk = can_reach_source_never_disrisk(CALL, source, disrisk);
 
     // physics simulation
     node.velocity() = velocity_repulsion_neighbour_and_wall(CALL, 0, 1000);
@@ -325,6 +362,8 @@ MAIN() {
                   << " | max neghbours: " << max_neighbours
                   << " | max any: " << max_neighbours_any
                   << " | hops: " << hops
+                  << " | safely reach gateway: " << reach_not_disrisk
+                  << " | historically: " << reach_never_disrisk
                   << std::endl;
     }
 
